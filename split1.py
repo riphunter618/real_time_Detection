@@ -71,4 +71,8 @@ async def index(request: Request):
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
+if __name__ == "__main__":
+    # Use the PORT environment variable Render provides, fallback to 8000 locally
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("split1:app", host="0.0.0.0", port=port, reload=True)
 
