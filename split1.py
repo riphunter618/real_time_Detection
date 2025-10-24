@@ -8,6 +8,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 import os
+import uvicorn
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -76,5 +77,6 @@ if __name__ == "__main__":
     # Use the PORT environment variable Render provides, fallback to 8000 locally
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("split1:app", host="0.0.0.0", port=port, reload=True)
+
 
 
