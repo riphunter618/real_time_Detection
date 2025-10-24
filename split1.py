@@ -71,3 +71,4 @@ async def index(request: Request):
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
+
