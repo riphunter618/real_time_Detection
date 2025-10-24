@@ -12,7 +12,7 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # URL of your remote detection backend (Colab)
-DETECTOR_URL = "http://127.0.0.1:9000/detect"
+DETECTOR_URL = "https://hypocycloidal-felicidad-uncontributively.ngrok-free.dev/detect"
 
 
 def draw_boxes(frame, detections):
@@ -70,3 +70,4 @@ async def index(request: Request):
 @app.get("/video_feed")
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
