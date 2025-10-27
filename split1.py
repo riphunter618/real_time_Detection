@@ -1,67 +1,87 @@
-# fastapi_service.py
+import base64
 import cv2
 import numpy as np
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
 import requests
-from io import BytesIO
-from PIL import Image
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 import os
 import uvicorn
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# URL of your remote detection backend (Colab)
-DETECTOR_URL = "https://hypocycloidal-felicidad-uncontributively.ngrok-free.dev/detect"
+# ✅ Change this to your remote detector (ngrok or Render backend)
+DETECTOR_URL = "http://127.0.0.1:9000/detect"
+
+# Allow frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def draw_boxes(frame, detections):
-    """Draw boxes and labels on the frame."""
+    """Draw bounding boxes and labels on the frame."""
     for det in detections:
         x1, y1, x2, y2 = det["bbox"]
         cls_name = det.get("class", "Object")
         name = det.get("name", "Unknown")
 
-        # Draw rectangle
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        # Put label
         cv2.putText(frame, f"{cls_name} - {name}", (x1, y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
     return frame
 
 
-def generate_frames():
-    cap = cv2.VideoCapture(0)
-    frame_count = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frame_count += 1
-        if frame_count % 5 == 0:
-        # Encode frame to JPEG
-            _, buffer = cv2.imencode(".jpg", frame)
-            files = {"file": ("frame.jpg", buffer.tobytes(), "image/jpeg")}
+@app.post("/process_frame")
+async def process_frame(request: Request):
+    """
+    Receive a frame from the frontend, send it to the detection backend,
+    draw boxes, and return detection results (or processed image).
+    """
+    data = await request.json()
+    image_base64 = data.get("image")
 
-            try:
-                # Send frame to detection backend
-                response = requests.post(DETECTOR_URL, files=files, timeout=5)
-                results = response.json().get("detections", [])
-            except:
-                results = []
+    if not image_base64:
+        return {"error": "No image data received"}
 
-            # Draw boxes locally
-            frame = draw_boxes(frame, results)
+    try:
+        # Decode Base64 image
+        image_bytes = base64.b64decode(image_base64.split(",")[1])
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-            # Encode frame for streaming
-            _, buffer = cv2.imencode(".jpg", frame)
-            frame_bytes = buffer.tobytes()
+        # Convert frame to JPEG to send to detection backend
+        _, buffer = cv2.imencode(".jpg", frame)
+        files = {"file": ("frame.jpg", buffer.tobytes(), "image/jpeg")}
 
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+        # Send to remote detector
+        response = requests.post(DETECTOR_URL, files=files, timeout=10)
+        if response.status_code == 200:
+            results = response.json().get("detections", [])
+        else:
+            results = []
 
-    cap.release()
+        # Draw boxes locally
+        frame_with_boxes = draw_boxes(frame, results)
+
+        # Convert processed frame to Base64 to send back
+        _, jpeg = cv2.imencode(".jpg", frame_with_boxes)
+        # cv2.imshow('boom', jpeg)
+        processed_b64 = base64.b64encode(jpeg.tobytes()).decode("utf-8")
+
+        return {
+            "message": "Frame processed successfully",
+            "detections": results,
+            "processed_image": f"data:image/jpeg;base64,{processed_b64}"
+        }
+
+    except Exception as e:
+        return {"error": f"Processing failed: {str(e)}"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -69,14 +89,7 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.get("/video_feed")
-async def video_feed():
-    return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
-
 if __name__ == "__main__":
     # Use the PORT environment variable Render provides, fallback to 8000 locally
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("split1:app", host="0.0.0.0", port=port, reload=True)
-
-
-
