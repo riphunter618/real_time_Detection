@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>YOLO + DeepSORT + DeepFace Monitor</title>
+  <title>YOLO + DeepSORT + DeepFace Live Detection</title>
   <style>
     body {
       background: #0e0e0e;
@@ -13,17 +13,19 @@
       align-items: center;
       padding: 20px;
     }
-    img {
+    video, img {
       border-radius: 10px;
       border: 3px solid #333;
       width: 80%;
       max-width: 900px;
+      background-color: black;
+      margin-top: 10px;
     }
     h2 {
       margin-bottom: 20px;
     }
     button {
-      margin-top: 20px;
+      margin-top: 15px;
       padding: 10px 20px;
       border: none;
       border-radius: 8px;
@@ -36,14 +38,14 @@
       background-color: #0056b3;
     }
     #logs {
-      margin-top: 30px;
+      margin-top: 25px;
       width: 80%;
       max-width: 900px;
       background: #111;
       padding: 15px;
       border-radius: 10px;
       overflow-y: auto;
-      height: 250px;
+      height: 180px;
       font-size: 14px;
       border: 1px solid #333;
     }
@@ -54,29 +56,93 @@
   </style>
 </head>
 <body>
-  <h2>YOLO + DeepSORT + DeepFace Live Stream</h2>
-  <img id="video" src="/video_feed" alt="Video Stream" />
-  <button onclick="toggleRecognition()">Toggle Face Recognition</button>
+  <h2>YOLO + DeepSORT + DeepFace Live Detection</h2>
 
+  <!-- Local webcam feed (visible now) -->
+  <video id="localVideo" autoplay playsinline muted></video>
+
+  <!-- Processed video stream (from backend) -->
+  <img id="processedVideo" alt="Processed Stream" />
+
+  <button id="startBtn">Start Detection</button>
   <div id="logs"></div>
 
   <script>
-    async function toggleRecognition() {
-      const res = await fetch('/toggle_recognition');
-      const data = await res.json();
-      alert(`Face Recognition is now: ${data.recognition_enabled ? "ON" : "OFF"}`);
-    }
+    const video = document.getElementById("localVideo");
+    const processedImg = document.getElementById("processedVideo");
+    const logsDiv = document.getElementById("logs");
+    const startBtn = document.getElementById("startBtn");
 
-    async function fetchLogs() {
-      const res = await fetch('/logs');
-      const data = await res.json();
-      const logsDiv = document.getElementById("logs");
-      logsDiv.innerHTML = data.logs.map(l => `<p>${l}</p>`).join("");
+    let streaming = false;
+
+    function logMessage(msg) {
+      const p = document.createElement("p");
+      p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logsDiv.appendChild(p);
       logsDiv.scrollTop = logsDiv.scrollHeight;
     }
 
-    setInterval(fetchLogs, 2000); // update logs every 2 sec
-    fetchLogs();
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await new Promise(resolve => video.onloadedmetadata = resolve);
+        logMessage("Camera started.");
+        return true;
+      } catch (err) {
+        logMessage("Camera access error: " + err.message);
+        return false;
+      }
+    }
+
+    async function sendFrame() {
+      if (!streaming) return;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+      try {
+        const response = await fetch("/process_frame", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl })
+        });
+
+        const result = await response.json();
+
+        if (result.processed_image) {
+          processedImg.src = result.processed_image;
+        }
+
+        if (result.detections) {
+          logMessage(`Detections: ${result.detections.length}`);
+        }
+      } catch (err) {
+        logMessage("Error sending frame: " + err.message);
+      }
+
+      setTimeout(sendFrame, 300); // ≈ 3 FPS
+    }
+
+    startBtn.onclick = async () => {
+      if (!streaming) {
+        const ok = await startCamera();
+        if (ok) {
+          streaming = true;
+          startBtn.textContent = "Stop Detection";
+          logMessage("Starting detection loop...");
+          sendFrame();
+        }
+      } else {
+        streaming = false;
+        startBtn.textContent = "Start Detection";
+        logMessage("Detection stopped.");
+      }
+    };
   </script>
 </body>
 </html>
