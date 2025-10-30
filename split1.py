@@ -13,7 +13,7 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # ✅ Change this to your remote detector (ngrok or Render backend)
-DETECTOR_URL = "http://127.0.0.1:9000/detect"
+DETECTOR_URL = "https://hypocycloidal-felicidad-uncontributively.ngrok-free.dev/detect"
 
 # Allow frontend access
 app.add_middleware(
