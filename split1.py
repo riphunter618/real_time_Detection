@@ -13,7 +13,7 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # ✅ Change this to your remote detector (ngrok or Render backend)
-DETECTOR_URL = "https://hypocycloidal-felicidad-uncontributively.ngrok-free.dev/detect"
+DETECTOR_URL = "http://127.0.0.1:9000/detect"
 
 # Allow frontend access
 app.add_middleware(
@@ -54,7 +54,7 @@ async def process_frame(request: Request):
         image_bytes = base64.b64decode(image_base64.split(",")[1])
         np_arr = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # Convert frame to JPEG to send to detection backend
         _, buffer = cv2.imencode(".jpg", frame)
         files = {"file": ("frame.jpg", buffer.tobytes(), "image/jpeg")}
@@ -67,8 +67,10 @@ async def process_frame(request: Request):
             results = []
 
         # Draw boxes locally
+        #print(results[0])
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         frame_with_boxes = draw_boxes(frame, results)
-
+        logs = response.json().get("message", [])
         # Convert processed frame to Base64 to send back
         _, jpeg = cv2.imencode(".jpg", frame_with_boxes)
         # cv2.imshow('boom', jpeg)
@@ -77,7 +79,8 @@ async def process_frame(request: Request):
         return {
             "message": "Frame processed successfully",
             "detections": results,
-            "processed_image": f"data:image/jpeg;base64,{processed_b64}"
+            "processed_image": f"data:image/jpeg;base64,{processed_b64}",
+            "logs":logs
         }
 
     except Exception as e:
@@ -93,4 +96,3 @@ if __name__ == "__main__":
     # Use the PORT environment variable Render provides, fallback to 8000 locally
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("split1:app", host="0.0.0.0", port=port, reload=True)
-
