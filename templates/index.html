@@ -58,10 +58,7 @@
 <body>
   <h2>YOLO + DeepSORT + DeepFace Live Detection</h2>
 
-  <!-- Local webcam feed (visible now) -->
   <video id="localVideo" autoplay playsinline muted></video>
-
-  <!-- Processed video stream (from backend) -->
   <img id="processedVideo" alt="Processed Stream" />
 
   <button id="startBtn">Start Detection</button>
@@ -74,6 +71,7 @@
     const startBtn = document.getElementById("startBtn");
 
     let streaming = false;
+    let frameCount = 0;
 
     function logMessage(msg) {
       const p = document.createElement("p");
@@ -86,7 +84,7 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
-        await new Promise(resolve => video.onloadedmetadata = resolve);
+        await new Promise(resolve => (video.onloadedmetadata = resolve));
         logMessage("Camera started.");
         return true;
       } catch (err) {
@@ -94,8 +92,6 @@
         return false;
       }
     }
-
-    let frameCount = 0; // add this outside the function, globally
 
     async function sendFrame() {
       if (!streaming) return;
@@ -110,31 +106,32 @@
 
       // Only send every 5th frame
       if (frameCount % 5 === 0) {
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        canvas.toBlob(async (blob) => {
+          try {
+            const formData = new FormData();
+            formData.append("file", blob, "frame.jpg");
 
-        try {
-          const response = await fetch("/process_frame", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: dataUrl })
-          });
+            const response = await fetch("/process_frame", {
+              method: "POST",
+              body: formData,
+            });
 
-          const result = await response.json();
+            const result = await response.json();
 
-          if (result.processed_image) {
-            processedImg.src = result.processed_image;
+            if (result.processed_image) {
+              processedImg.src = result.processed_image;
+            }
+
+            if (result.detections) {
+              logMessage(`Detections: ${result.logs}`);
+            }
+          } catch (err) {
+            logMessage("Error sending frame: " + err.message);
           }
-
-          if (result.detections) {
-            logMessage(`Detections: ${result.logs}`);
-          }
-        } catch (err) {
-          logMessage("Error sending frame: " + err.message);
-        }
+        }, "image/jpeg", 1.0); // full quality JPEG
       }
 
-      // Keep looping ~3 FPS (you can adjust if needed)
-      setTimeout(sendFrame, 300);
+      setTimeout(sendFrame, 300); // ~3 FPS
     }
 
     startBtn.onclick = async () => {
