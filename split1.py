@@ -2,7 +2,7 @@ import base64
 import cv2
 import numpy as np
 import requests
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -38,21 +38,22 @@ def draw_boxes(frame, detections):
 
 
 @app.post("/process_frame")
-async def process_frame(request: Request):
+async def process_frame(file:UploadFile=File(...)):
     """
     Receive a frame from the frontend, send it to the detection backend,
     draw boxes, and return detection results (or processed image).
     """
-    data = await request.json()
-    image_base64 = data.get("image")
+    data = await file.read()
+    #image_base64 = data.get("image")
 
-    if not image_base64:
+    if not data:
         return {"error": "No image data received"}
 
     try:
         # Decode Base64 image
-        image_bytes = base64.b64decode(image_base64.split(",")[1])
-        np_arr = np.frombuffer(image_bytes, np.uint8)
+        #image_bytes = base64.b64decode(image_base64.split(",")[1])
+        np_arr = np.frombuffer(data, np.uint8)
+        #print(np_arr)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # Convert frame to JPEG to send to detection backend
